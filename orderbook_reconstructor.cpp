@@ -364,6 +364,21 @@ public:
         return ss.str();
     }
 
+    // Helper: compare two MBP-10 snapshots (top 10 levels)
+    bool mbpSnapshotChanged(const MBPRow& a, const MBPRow& b) {
+        for (int i = 0; i < 10; ++i) {
+            if (a.bid_prices[i] != b.bid_prices[i] ||
+                a.bid_sizes[i] != b.bid_sizes[i] ||
+                a.bid_counts[i] != b.bid_counts[i] ||
+                a.ask_prices[i] != b.ask_prices[i] ||
+                a.ask_sizes[i] != b.ask_sizes[i] ||
+                a.ask_counts[i] != b.ask_counts[i]) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // Process MBO file and generate MBP output
     void processFile(const std::string& input_file, const std::string& output_file) {
         std::ifstream infile(input_file);
@@ -394,6 +409,8 @@ public:
         }
         outfile << ",symbol,order_id" << std::endl;
 
+        MBPRow prev_snapshot; // previous MBP-10 snapshot
+        bool prev_snapshot_valid = false;
         while (std::getline(infile, line)) {
             if (first_line) {
                 first_line = false;
@@ -404,9 +421,10 @@ public:
 
             // Skip the initial clear action
             if (mbo_row.action == 'R' && current_row == 0) {
-                // Generate empty orderbook snapshot
                 MBPRow mbp_row = generateMBPRow(mbo_row);
                 outfile << mbpRowToCSV(mbp_row) << std::endl;
+                prev_snapshot = mbp_row;
+                prev_snapshot_valid = true;
                 continue;
             }
 
@@ -415,7 +433,12 @@ public:
 
             // Generate MBP snapshot
             MBPRow mbp_row = generateMBPRow(mbo_row);
-            outfile << mbpRowToCSV(mbp_row) << std::endl;
+            // Only write if MBP-10 snapshot changed, or if this is the first snapshot
+            if (!prev_snapshot_valid || mbpSnapshotChanged(mbp_row, prev_snapshot)) {
+                outfile << mbpRowToCSV(mbp_row) << std::endl;
+                prev_snapshot = mbp_row;
+                prev_snapshot_valid = true;
+            }
         }
 
         infile.close();
